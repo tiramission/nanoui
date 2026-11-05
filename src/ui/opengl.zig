@@ -47,6 +47,12 @@ const Target = struct {
 pub const Renderer = struct {
     /// OpenGL ES 3, not OpenGL 3.3.
     es: bool = false,
+    /// The frame's own textures (`ui.texture`): one slot, because the draws
+    /// take them one at a time.
+    app_texture: u32 = 0,
+    app_w: u32 = 0,
+    app_h: u32 = 0,
+    app_generation: u64 = std.math.maxInt(u64),
     quad: u32,
     pane: u32,
     down: u32,
@@ -108,7 +114,7 @@ pub const Renderer = struct {
         if (r.vao != 0) g.glDeleteVertexArrays(1, &r.vao);
         if (r.empty_vao != 0) g.glDeleteVertexArrays(1, &r.empty_vao);
         if (r.vbo != 0) g.glDeleteBuffers(1, &r.vbo);
-        for ([_]u32{ r.atlas, r.images }) |t| if (t != 0) g.glDeleteTextures(1, &t);
+        for ([_]u32{ r.atlas, r.images, r.app_texture }) |t| if (t != 0) g.glDeleteTextures(1, &t);
         r.frame.deinit();
         r.a.deinit();
         r.b.deinit();
@@ -140,7 +146,9 @@ pub const Renderer = struct {
 
     /// Draws `instances` over `clear`, `size` points at `scale`, into the
     /// renderer's frame, then copies it to framebuffer `target`.
-    pub fn draw(r: *Renderer, instances: []const gpu.Instance, size: types.Size, scale: f32, clear: types.Color, target: u32, time: f64) void {
+    /// `textures` is the frame's own (`Context.textures`): the ones `ui.texture`
+    /// instances name, bound one draw at a time.
+    pub fn draw(r: *Renderer, instances: []const gpu.Instance, size: types.Size, scale: f32, clear: types.Color, target: u32, time: f64, textures: []const gpu.Texture) void {
         const g = &gl.api;
         const w: usize = @intFromFloat(@max(1, @round(size.w * scale)));
         const h: usize = @intFromFloat(@max(1, @round(size.h * scale)));
@@ -161,7 +169,7 @@ pub const Renderer = struct {
             // What comes before the next pane, in one draw.
             var end = first;
             while (end < instances.len and instances[end].kind != gpu.Kind.glass) end += 1;
-            r.drawRange(r.quad, size, scale, first, end - first, time);
+            r.drawRun(r.quad, size, scale, first, end - first, time, instances, textures);
             if (end == instances.len) break;
             r.drawPane(instances, end, size, scale, time);
             first = end + 1;
@@ -200,7 +208,65 @@ pub const Renderer = struct {
     }
 
     /// Draws instances [first, first + count) with `prog`.
-    fn drawRange(r: *Renderer, prog: u32, size: types.Size, scale: f32, first: usize, count: usize, time: f64) void {
+    /// Instances [first, first + count) in draws of their own, split at every
+    /// instance that names a frame texture (kind 8): OpenGL binds one
+    /// texture a draw, where Metal names a slot per instance.
+    fn drawRun(r: *Renderer, prog: u32, size: types.Size, scale: f32, first: usize, count: usize, time: f64, instances: []const gpu.Instance, textures: []const gpu.Texture) void {
+        var from = first;
+        var i = first;
+        while (i < first + count) : (i += 1) {
+            if (instances[i].kind != gpu.Kind.texture) continue;
+            if (i > from) r.drawRange(prog, size, scale, from, i - from, time, r.app_texture);
+            from = i + 1;
+            const slot: usize = @intFromFloat(instances[i].border_width);
+            if (slot >= textures.len) continue;
+            const tex = r.frameTexture(textures[slot], @intCast(slot + 1));
+            if (tex == 0) continue;
+            r.drawRange(prog, size, scale, i, 1, time, tex);
+        }
+        if (first + count > from) r.drawRange(prog, size, scale, from, first + count - from, time, r.app_texture);
+    }
+
+    /// The GPU's copy of one of the frame's textures, made or brought up to
+    /// date: one slot, because the draws take them one at a time.
+    fn frameTexture(r: *Renderer, t: gpu.Texture, generation: u64) u32 {
+        if (r.app_generation == generation and r.app_texture != 0) return r.app_texture;
+        const g = &gl.api;
+        const stride_bytes = if (t.stride > 0) t.stride else @as(usize, t.width) * 4;
+        if (t.width == 0 or t.height == 0) return 0;
+        if (t.bgra.len < stride_bytes * t.height) return 0;
+        if (r.app_texture != 0 and (r.app_w != t.width or r.app_h != t.height)) {
+            g.glDeleteTextures(1, &r.app_texture);
+            r.app_texture = 0;
+        }
+        if (r.app_texture == 0) {
+            r.app_texture = newTexture(gl.RGBA8, @intCast(t.width), @intCast(t.height), r.bgra(), null, gl.LINEAR);
+            r.app_w = t.width;
+            r.app_h = t.height;
+        }
+        g.glBindTexture(gl.TEXTURE_2D, r.app_texture);
+        g.glPixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        if (r.es) {
+            // OpenGL ES has no BGRA textures: a row is swapped into RGBA
+            // before it is uploaded, as the atlas branch does wholesale.
+            const row = std.heap.page_allocator.alloc(u8, stride_bytes) catch return r.app_texture;
+            defer std.heap.page_allocator.free(row);
+            var y: usize = 0;
+            while (y < t.height) : (y += 1) {
+                const src = t.bgra[y * stride_bytes ..][0..stride_bytes];
+                @memcpy(row, src);
+                var x: usize = 0;
+                while (x < stride_bytes) : (x += 4) std.mem.swap(u8, &row[x], &row[x + 2]);
+                g.glTexSubImage2D(gl.TEXTURE_2D, 0, 0, @intCast(y), @intCast(t.width), 1, gl.RGBA, gl.UNSIGNED_BYTE, row.ptr);
+            }
+        } else {
+            g.glTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, @intCast(t.width), @intCast(t.height), gl.BGRA, gl.UNSIGNED_BYTE, t.bgra.ptr);
+        }
+        r.app_generation = generation;
+        return r.app_texture;
+    }
+
+    fn drawRange(r: *Renderer, prog: u32, size: types.Size, scale: f32, first: usize, count: usize, time: f64, app: u32) void {
         if (count == 0) return;
         const g = &gl.api;
         g.glUseProgram(prog);
@@ -217,6 +283,7 @@ pub const Renderer = struct {
         g.glBlendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         bindTexture(prog, "atlas", 0, r.atlas);
         bindTexture(prog, "images", 1, r.images);
+        bindTexture(prog, "app_texture", 2, app);
         g.glDrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, @intCast(count));
     }
 
