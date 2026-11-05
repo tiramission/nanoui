@@ -166,8 +166,17 @@ pub const Db = struct {
         var best_score: u32 = std.math.maxInt(u32);
         for (db.faces.items, 0..) |f, i| {
             if (!std.ascii.eqlIgnoreCase(f.style.name(), name)) continue;
-            const dw: u32 = @abs(@as(i32, f.style.weight) - @as(i32, weight));
-            const score = dw + @as(u32, if (f.style.italic != italic) 1000 else 0);
+            // Nearer, but never heavier than asked: a hanzi asked at
+            // semibold from a family with 400 and 700 is drawn at 400,
+            // where a Latin string at the same weight picks a face with 600.
+            // Choosing 700 for 600 made the CJK text read a step heavier
+            // than the words beside it. Heavier only when nothing lighter
+            // exists.
+            const wf: i32 = f.style.weight;
+            const wa: i32 = @as(i32, weight);
+            const over: u32 = if (wf > wa) 1 else 0;
+            const dw: u32 = @abs(wf - wa);
+            const score = dw * 2 + over * 1000 + @as(u32, if (f.style.italic != italic) 1000 else 0);
             if (score < best_score) {
                 best_score = score;
                 best = @intCast(i);
