@@ -63,8 +63,13 @@ struct Instance {
 StructuredBuffer<Instance> instances : register(t0);
 Texture2D<float4> atlas : register(t1);
 Texture2D<float4> images : register(t2);
+// A texture the app gave this frame (`ui.texture`: a photograph), bound
+// to t5 by `d3d11.zig`, one draw at a time. It was the one kind the GPU
+// renderer had no branch for, which is why photographs came out white.
+Texture2D<float4> app_texture : register(t5);
 SamplerState sampler_atlas : register(s1);
 SamplerState sampler_images : register(s2);
+SamplerState sampler_app_texture : register(s5);
 
 // The vertex shader's outputs and the fragment shader's inputs; the flat ones
 // carry the instance's fields, as GLSL's `flat out` do.
@@ -310,6 +315,12 @@ float4 shade(Varyings v) {
     float d = da.x;
     float aa = da.y;
     float coverage = 1.0 - smoothstep(-aa, aa, d);
+    if (kind == 8.0) {
+        // Premultiplied, the part `uv` names, its corners rounded, the
+        // opacity the frame asked for: shader.metal's kind 8 exactly.
+        float4 px = app_texture.SampleLevel(sampler_app_texture, v.v_uv, 0);
+        return px * (coverage * v.i_color.a);
+    }
     if (kind == 3.0) {
         // Premultiplied already: scaled by the corners' coverage and opacity.
         float4 px = images.SampleLevel(sampler_images, v.v_uv, 0);

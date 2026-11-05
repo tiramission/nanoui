@@ -243,6 +243,10 @@ float clip_coverage() {
 #if defined(QUAD_FS)
 uniform sampler2D atlas;
 uniform sampler2D images;
+// A texture the app gave this frame (`ui.texture`: a photograph), bound
+// by `opengl.zig` for one draw at a time: Direct3D and OpenGL bind one
+// texture a draw, where Metal names a slot per instance.
+uniform sampler2D app_texture;
 
 // Shadows as GPUI draws them (after Evan Wallace's "fast rounded rectangle
 // shadows"): the box's coverage blurred by a Gaussian, exact along x with
@@ -363,6 +367,15 @@ vec4 shade() {
         coverage *= 0.2;
     } else {
         coverage = 1.0 - smoothstep(-aa, aa, d);
+    }
+    if (kind == 8.0) {
+        // Premultiplied, the part `uv` names, its corners rounded, the
+        // opacity the frame asked for: shader.metal's kind 8 exactly.
+        vec4 px = texture(app_texture, v_uv);
+#ifdef GL_ES
+        px = px.bgra;
+#endif
+        return px * (coverage * i_color.a);
     }
     if (kind == 3.0) {
         // Premultiplied already: scaled by the corners' coverage and opacity.
