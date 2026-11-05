@@ -64,7 +64,7 @@ pub fn paintGpu(self: *Surface, h: w.HWND) bool {
     const draw_w: f32 = @as(f32, @floatFromInt(p.width)) / self.scale;
     const draw_h: f32 = @as(f32, @floatFromInt(p.height)) / self.scale;
     const draw_size: types.Size = .{ .w = @min(self.size.w, draw_w), .h = @min(self.size.h, draw_h) };
-    g.draw(self.instances.items, draw_size, self.scale, bg, @ptrCast(back));
+    g.draw(self.instances.items, draw_size, self.scale, bg, @ptrCast(back), self.ctx.textures.items);
     // The view asks for the present mode; it can change between frames.
     p.vsync = self.ctx.vsync;
     if (self.dump_enabled and self.dumps == 0) {

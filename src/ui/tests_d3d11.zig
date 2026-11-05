@@ -82,7 +82,7 @@ fn drawnPixels(px: gpu.Pixels, clear: ui.Color) usize {
 fn drawThenRead(r: *d3d11.Renderer, t: *ui.Tester, clear: ui.Color) !gpu.Pixels {
     const gpa = testing.allocator;
     r.sync(t.text.atlas.mask(), t.text.atlas.generation, t.text.images.pictures(), t.text.images.generation);
-    r.draw(t.instances.items, t.size, t.scale, clear, null);
+    r.draw(t.instances.items, t.size, t.scale, clear, null, t.ctx.textures.items);
     const px = try r.read(gpa);
     if (drawnPixels(px, clear) == 0) {
         px.deinit(gpa);
@@ -175,7 +175,7 @@ test "d3d11: a coloured quad keeps its channels" {
         .{ .rect = .{ 10, 0, 10, 30 }, .color = .{ 0, 1, 0, 1 } },
         .{ .rect = .{ 20, 0, 10, 30 }, .color = .{ 0, 0, 1, 1 } },
     };
-    r.draw(&quads, .{ .w = 30, .h = 30 }, 1, clear, null);
+    r.draw(&quads, .{ .w = 30, .h = 30 }, 1, clear, null, &.{});
     const px = try r.read(gpa);
     defer px.deinit(gpa);
 
@@ -271,7 +271,7 @@ test "d3d11: the sizes a drag passes through keep every glass target alive" {
             .border_width = 1,
             .kind = gpu.Kind.glass,
         }) catch return;
-        r.draw(instances.items, .{ .w = s[0], .h = s[1] }, 2, clear, null);
+        r.draw(instances.items, .{ .w = s[0], .h = s[1] }, 2, clear, null, &.{});
         try testing.expect(r.frame.texture != null and r.frame.rtv != null and r.frame.srv != null);
         try testing.expect(r.a.texture != null and r.a.rtv != null and r.a.srv != null);
         try testing.expect(r.b.texture != null and r.b.rtv != null and r.b.srv != null);
