@@ -381,6 +381,25 @@ pub const Surface = struct {
                 self.ctx.pointerUp();
                 self.frame();
             },
+            // The right button: a context menu's edge (`secondary`), and the
+            // held state (`secondary_down`) a view may act on -- the way
+            // macOS's rightMouseDown/rightMouseUp give both.
+            w.WM_RBUTTONDOWN, w.WM_RBUTTONDBLCLK => {
+                _ = w.SetCapture(h);
+                self.setMouse(lp);
+                self.ctx.input.button = .right;
+                self.ctx.input.click_count = if (msg == w.WM_RBUTTONDBLCLK) 2 else 1;
+                self.ctx.updateHot();
+                self.ctx.secondaryDown();
+                self.frame();
+            },
+            w.WM_RBUTTONUP => {
+                _ = w.ReleaseCapture();
+                self.setMouse(lp);
+                self.ctx.updateHot();
+                self.ctx.pointerUp();
+                self.frame();
+            },
             w.WM_MOUSEWHEEL => {
                 var p: w.POINT = .{ .x = @as(i16, @truncate(lp)), .y = @as(i16, @truncate(lp >> 16)) };
                 _ = w.ScreenToClient(h, &p);

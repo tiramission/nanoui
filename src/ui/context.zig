@@ -524,12 +524,17 @@ pub const Context = struct {
     pub fn pointerUp(c: *Context) void {
         c.input.down = false;
         c.input.released = true;
+        if (c.input.button == .right) {
+            c.input.secondary_down = false;
+            c.input.secondary_released = true;
+        }
     }
 
     /// The secondary button went down (`Input.secondary`): no press, and
     /// the focus stays where it was.
     pub fn secondaryDown(c: *Context) void {
         c.input.secondary = true;
+        c.input.secondary_down = true;
     }
 
     pub fn pointerDown(c: *Context) void {

@@ -208,6 +208,12 @@ pub const Input = struct {
     /// Control-click on the Mac. It isn't a press (`pressed` stays false):
     /// it asks for a box's context menu (`Div.secondaryClicked`).
     secondary: bool = false,
+    /// The secondary button is held down now (not only pressed this event).
+    /// A view that acts while it is held -- a temporary zoom -- reads this;
+    /// `secondary` is the edge a context menu wants.
+    secondary_down: bool = false,
+    /// The secondary button came up in this event.
+    secondary_released: bool = false,
     click_count: u32 = 0,
     scroll: types.Point = .{},
     scroll_phase: ScrollPhase = .none,
@@ -252,6 +258,7 @@ pub const Input = struct {
         i.pressed = false;
         i.released = false;
         i.secondary = false;
+        i.secondary_released = false;
         i.scroll = .{};
         i.scroll_phase = .none;
         i.mods_changed = false;
