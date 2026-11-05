@@ -94,6 +94,8 @@ pub const Canvas = @import("draw.zig").Canvas;
 pub const Stroke = @import("draw.zig").Stroke;
 pub const triangulate = @import("draw.zig").triangulate;
 pub const Texture = @import("gpu.zig").Texture;
+/// The frame's primitives: `Instance`, `Kind`, `Texture`.
+pub const gpu = @import("gpu.zig");
 pub const ImageOptions = widgets.ImageOptions;
 pub const svg = widgets.svg;
 /// A font the app brings, found by family name (`Theme.font`, …).
@@ -142,6 +144,9 @@ pub const ScrollPhase = @import("input.zig").ScrollPhase;
 pub const PixelCanvas = @import("canvas.zig").Canvas;
 /// CPU raster (Linux/Windows). `raster.shapes.shadow_samples` is 8 to match Metal.
 pub const raster = @import("raster.zig");
+/// The Direct3D 11 renderer (Windows), exported so an app can hold it to
+/// the CPU renderer on the kinds it draws: `ui.texture` among them.
+pub const d3d11 = if (@import("builtin").os.tag == .windows) @import("d3d11.zig") else struct {};
 
 /// What a window of native UI shows: `build` runs on every frame.
 pub const View = struct {
